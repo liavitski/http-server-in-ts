@@ -1,6 +1,16 @@
 import { NextFunction, Request, Response } from 'express';
 import express from 'express';
-import config from './config.js';
+import { config } from './config.js';
+import postgres from 'postgres';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { db } from './db/index.js';
+import { users } from './db/schema.js';
+import { sql } from 'drizzle-orm';
+
+// Database will be up-to-date whenever server starts
+const migrationClient = postgres(config.db.url, { max: 1 });
+await migrate(drizzle(migrationClient), config.db.migrationConfig);
 
 const app = express();
 const PORT = 8080;
@@ -20,6 +30,7 @@ app.get('/api/healthz', handlerReadiness);
 app.get('/admin/metrics', handlerRequestCount);
 app.post('/admin/reset', handlerRequestReset);
 app.post('/api/validate_chirp', handlerValidateChirp);
+app.post('/api/users', handlerUsers);
 
 // Catch all unknown routes → turn into NotFoundError
 app.use((req, res, next) => {
@@ -80,6 +91,33 @@ function errorHandler(
   res.status(status).json({ error: message });
 }
 
+async function handlerUsers(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  type userEmail = {
+    email: string;
+  };
+
+  try {
+    const { email }: userEmail = req.body;
+
+    if (typeof email !== 'string') {
+      throw new BadRequestError('Invalid email');
+    }
+
+    const [user] = await db
+      .insert(users)
+      .values({ email })
+      .returning();
+
+    return res.status(201).json({ user });
+  } catch (err) {
+    next(err);
+  }
+}
+
 function handlerReadiness(req: Request, res: Response): void {
   res.set('Content-Type', 'text/plain').send('ok');
 }
@@ -99,9 +137,22 @@ function handlerRequestCount(req: Request, res: Response): void {
   res.set('Content-Type', 'text/html; charset=utf-8').send(html);
 }
 
-function handlerRequestReset(req: Request, res: Response): void {
-  config.fileserverHits = 0;
-  res.type('text').send(`Hits reseted to 0`);
+async function handlerRequestReset(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    if (config.db.platform !== 'dev') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    await db.execute(sql`DELETE FROM "users"`);
+
+    return res.status(200).json({ message: 'All users deleted' });
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function handlerValidateChirp(
