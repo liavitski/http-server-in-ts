@@ -1,13 +1,14 @@
 import { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import { db } from './db/client.js';
-import { users } from './db/schema.js';
+import { users, chirps } from './db/schema.js';
 import { sql } from 'drizzle-orm';
 
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { config } from './db/migrationConfig.js';
+import { randomUUID } from 'node:crypto';
 
 // Database will be up-to-date whenever server starts
 const migrationClient = postgres(config.db.url, { max: 1 });
@@ -30,8 +31,8 @@ app.use(
 app.get('/api/healthz', handlerReadiness);
 app.get('/admin/metrics', handlerRequestCount);
 app.post('/admin/reset', handlerRequestReset);
-app.post('/api/validate_chirp', handlerValidateChirp);
 app.post('/api/users', handlerUsers);
+app.post('/api/chirps', handlerCreateChirp);
 
 // Catch all unknown routes → turn into NotFoundError
 app.use((req, res, next) => {
@@ -90,6 +91,52 @@ function errorHandler(
   const message = err.message ?? 'Something went wrong';
 
   res.status(status).json({ error: message });
+}
+
+async function handlerCreateChirp(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  type ValidateChirpParams = {
+    body: string;
+    userId: string;
+  };
+
+  try {
+    const { body, userId }: ValidateChirpParams = req.body;
+
+    if (!userId || typeof body !== 'string' || body.length === 0) {
+      throw new BadRequestError('Invalid request body');
+    }
+
+    if (body.length > 140) {
+      throw new BadRequestError('Chirp is too long');
+    }
+
+    const bannedWords = ['kerfuffle', 'sharbert', 'fornax'];
+
+    const words = body.split(' ');
+
+    const cleanedWords = words.map((word) => {
+      const lower = word.toLocaleLowerCase();
+
+      if (bannedWords.includes(lower)) {
+        return '****';
+      }
+      return word;
+    });
+
+    const cleanedBody = cleanedWords.join(' ');
+
+    const [chirp] = await db
+      .insert(chirps)
+      .values({ id: randomUUID(), userId, body: cleanedBody });
+
+    return res.status(200).json({ chirp });
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function handlerUsers(
@@ -151,47 +198,6 @@ async function handlerRequestReset(
     await db.execute(sql`DELETE FROM "users"`);
 
     return res.status(200).json({ message: 'All users deleted' });
-  } catch (err) {
-    next(err);
-  }
-}
-
-async function handlerValidateChirp(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
-  type ValidateChirpParams = {
-    body: string;
-  };
-
-  try {
-    const { body }: ValidateChirpParams = req.body;
-
-    if (typeof body !== 'string') {
-      throw new BadRequestError('Invalid request body');
-    }
-
-    if (body.length > 140) {
-      throw new BadRequestError('Chirp is too long');
-    }
-
-    const bannedWords = ['kerfuffle', 'sharbert', 'fornax'];
-
-    const words = body.split(' ');
-
-    const cleanedWords = words.map((word) => {
-      const lower = word.toLocaleLowerCase();
-
-      if (bannedWords.includes(lower)) {
-        return '****';
-      }
-      return word;
-    });
-
-    const cleanedBody = cleanedWords.join(' ');
-
-    return res.status(200).json({ cleanedBody });
   } catch (err) {
     next(err);
   }
