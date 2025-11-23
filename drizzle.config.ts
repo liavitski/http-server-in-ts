@@ -2,7 +2,7 @@ import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
   schema: 'src/db/schema.ts',
-  out: 'src/db/',
+  out: 'src/db/migrations',
   dialect: 'postgresql',
   dbCredentials: {
     url: 'postgres://pavel@localhost:5432/chirpy?sslmode=disable',

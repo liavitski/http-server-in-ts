@@ -1,12 +1,13 @@
 import { NextFunction, Request, Response } from 'express';
 import express from 'express';
-import { config } from './config.js';
-import postgres from 'postgres';
-import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import { db } from './db/index.js';
+import { db } from './db/client.js';
 import { users } from './db/schema.js';
 import { sql } from 'drizzle-orm';
+
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { config } from './db/migrationConfig.js';
 
 // Database will be up-to-date whenever server starts
 const migrationClient = postgres(config.db.url, { max: 1 });
