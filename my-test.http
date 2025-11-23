@@ -6,3 +6,23 @@ Content-Type: application/json
 ###
 
 GET http://localhost:8080/unknown-route
+
+
+###
+
+POST http://localhost:8080/api/users
+Content-Type: application/json
+
+{
+    "email": "pasha@gmail.com"
+}
+
+###
+POST http://localhost:8080/api/chirps
+Content-Type: application/json
+
+{
+    "body": "I love kerfuffle and fornax parties",
+    "userId": "a7beba88-5ae5-4658-8f40-cf94e47fdbec"
+}
+

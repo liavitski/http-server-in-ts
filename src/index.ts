@@ -46,6 +46,9 @@ app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
 });
 
+const allUsers = await db.select().from(users);
+console.log(allUsers);
+
 class AppError extends Error {
   status: number;
 
@@ -93,19 +96,16 @@ function errorHandler(
   res.status(status).json({ error: message });
 }
 
-async function handlerCreateChirp(
+export async function handlerCreateChirp(
   req: Request,
   res: Response,
   next: NextFunction
 ) {
-  type ValidateChirpParams = {
-    body: string;
-    userId: string;
-  };
-
   try {
-    const { body, userId }: ValidateChirpParams = req.body;
+    const { body, userId }: { body: string; userId: string } =
+      req.body;
 
+    // Validate input
     if (!userId || typeof body !== 'string' || body.length === 0) {
       throw new BadRequestError('Invalid request body');
     }
@@ -114,26 +114,26 @@ async function handlerCreateChirp(
       throw new BadRequestError('Chirp is too long');
     }
 
+    // Clean banned words
     const bannedWords = ['kerfuffle', 'sharbert', 'fornax'];
+    const cleanedBody = body
+      .split(' ')
+      .map((word) =>
+        bannedWords.includes(word.toLowerCase()) ? '****' : word
+      )
+      .join(' ');
 
-    const words = body.split(' ');
-
-    const cleanedWords = words.map((word) => {
-      const lower = word.toLocaleLowerCase();
-
-      if (bannedWords.includes(lower)) {
-        return '****';
-      }
-      return word;
-    });
-
-    const cleanedBody = cleanedWords.join(' ');
-
+    // Insert chirp
     const [chirp] = await db
       .insert(chirps)
-      .values({ id: randomUUID(), userId, body: cleanedBody });
+      .values({
+        id: randomUUID(),
+        userId,
+        body: cleanedBody, // only insert columns you need
+      })
+      .returning();
 
-    return res.status(200).json({ chirp });
+    return res.status(201).json({ chirp }); // 201 Created
   } catch (err) {
     next(err);
   }
