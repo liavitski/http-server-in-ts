@@ -4,11 +4,13 @@ import { db } from './db/client.js';
 import { users, chirps } from './db/schema.js';
 import { sql } from 'drizzle-orm';
 
+import { checkPasswordHash, hashPassword } from './auth.js';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { config } from './db/migrationConfig.js';
 import { randomUUID } from 'node:crypto';
+import { eq, asc } from 'drizzle-orm';
 
 // Database will be up-to-date whenever server starts
 const migrationClient = postgres(config.db.url, { max: 1 });
@@ -30,9 +32,13 @@ app.use(
 // Routes
 app.get('/api/healthz', handlerReadiness);
 app.get('/admin/metrics', handlerRequestCount);
+app.get('/api/chirps', handlerGetAllChirps);
+app.get('/api/chirps/:chirpID', handlerGetChirp);
+
 app.post('/admin/reset', handlerRequestReset);
 app.post('/api/users', handlerUsers);
 app.post('/api/chirps', handlerCreateChirp);
+app.post('/api/login', handlerLogin);
 
 // Catch all unknown routes → turn into NotFoundError
 app.use((req, res, next) => {
@@ -45,6 +51,16 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   console.log(`Server is running at http://localhost:${PORT}`);
 });
+
+type UserEmail = {
+  email: string;
+  password: string;
+};
+
+type RequestBody = {
+  password: string;
+  email: string;
+};
 
 const allUsers = await db.select().from(users);
 console.log(allUsers);
@@ -96,7 +112,102 @@ function errorHandler(
   res.status(status).json({ error: message });
 }
 
-export async function handlerCreateChirp(
+async function handlerLogin(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { password, email } = req.body as RequestBody;
+
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return res
+        .status(401)
+        .json({ message: 'Incorrect email or password' });
+    }
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    if (!user) {
+      return res
+        .status(401)
+        .json({ message: 'Incorrect email or password' });
+    }
+
+    const valid = await checkPasswordHash(
+      password,
+      user.hashedPassword
+    );
+
+    if (!valid) {
+      return res
+        .status(401)
+        .json({ message: 'Incorrect email or password' });
+    }
+
+    return res.status(200).json({
+      user: {
+        id: user.id,
+        email: user.email,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function handlerGetChirp(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { chirpID } = req.params;
+
+    if (!chirpID) {
+      return res.status(400).json({ error: 'Missing chirpId param' });
+    }
+
+    const result = await db
+      .select()
+      .from(chirps)
+      .where(eq(chirps.id, chirpID));
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: 'Chirp not found' });
+    }
+
+    return res.status(200).json(result[0]);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function handlerGetAllChirps(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const userChirps = await db
+      .select()
+      .from(chirps)
+      .where(
+        eq(chirps.userId, 'a7beba88-5ae5-4658-8f40-cf94e47fdbec')
+      )
+      .orderBy(asc(chirps.createdAt));
+
+    return res.status(200).json({ userChirps });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function handlerCreateChirp(
   req: Request,
   res: Response,
   next: NextFunction
@@ -144,21 +255,28 @@ async function handlerUsers(
   res: Response,
   next: NextFunction
 ) {
-  type userEmail = {
-    email: string;
-  };
-
   try {
-    const { email }: userEmail = req.body;
+    const { email, password } = req.body as UserEmail;
 
     if (typeof email !== 'string') {
       throw new BadRequestError('Invalid email');
     }
 
+    if (typeof password !== 'string' || password.length < 8) {
+      throw new BadRequestError(
+        'Password must be at least 8 characters long'
+      );
+    }
+
+    const hashed = await hashPassword(password);
+
     const [user] = await db
       .insert(users)
-      .values({ email })
-      .returning();
+      .values({ email, hashedPassword: hashed })
+      .returning({
+        id: users.id,
+        email: users.email,
+      });
 
     return res.status(201).json({ user });
   } catch (err) {

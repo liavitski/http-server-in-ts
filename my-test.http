@@ -5,16 +5,27 @@ Content-Type: application/json
 
 ###
 
-GET http://localhost:8080/unknown-route
+GET http://localhost:8080/api/chirps
+Content-Type: application/json
 
+{}
 
-###
-
+### Create a user
 POST http://localhost:8080/api/users
 Content-Type: application/json
 
 {
-    "email": "pasha@gmail.com"
+    "email": "pawlik_by@mail.ru",
+    "password": "12345678"
+}
+
+### Login 
+POST http://localhost:8080/api/login
+Content-Type: application/json
+
+{
+    "password": "87654321",
+    "email": "pashalevy@gmail.com"
 }
 
 ###
@@ -22,7 +33,15 @@ POST http://localhost:8080/api/chirps
 Content-Type: application/json
 
 {
-    "body": "I love kerfuffle and fornax parties",
+    "body": "Hello world!",
     "userId": "a7beba88-5ae5-4658-8f40-cf94e47fdbec"
 }
+
+###
+GET http://localhost:8080/api/chirps/32736a51-1897-4490-867b-13295ffe54b5
+
+### Reset all users
+POST http://localhost:8080/admin/reset
+
+
 
