@@ -25,16 +25,19 @@ Content-Type: application/json
 
 {
     "password": "87654321",
+    //"password": "12345678",
     "email": "pashalevy@gmail.com"
+    //"email": "pawlik_by@mail.ru"
 }
 
 ###
 POST http://localhost:8080/api/chirps
 Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHkiLCJzdWIiOiJjZTViMGU1MC1mODZmLTRiMGUtYTdmOS00MDVhY2EyNGMxYTEiLCJpYXQiOjE3NjQ0OTgwNTYsImV4cCI6MTc2NDUwMTY1Nn0.PHj0n2VBig7Bf5eO5ayZdT381Rv1YJNDdq9ikLquXvk
 
 {
     "body": "Hello world!",
-    "userId": "a7beba88-5ae5-4658-8f40-cf94e47fdbec"
+    "userId": "ce5b0e50-f86f-4b0e-a7f9-405aca24c1a1"
 }
 
 ###

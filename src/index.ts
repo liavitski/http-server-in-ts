@@ -4,7 +4,13 @@ import { db } from './db/client.js';
 import { users, chirps } from './db/schema.js';
 import { sql } from 'drizzle-orm';
 
-import { checkPasswordHash, hashPassword } from './auth.js';
+import {
+  checkPasswordHash,
+  getBearerToken,
+  hashPassword,
+  makeJWT,
+  validateJWT,
+} from './auth.js';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
@@ -60,6 +66,7 @@ type UserEmail = {
 type RequestBody = {
   password: string;
   email: string;
+  expiresInSeconds?: number;
 };
 
 const allUsers = await db.select().from(users);
@@ -118,7 +125,12 @@ async function handlerLogin(
   next: NextFunction
 ) {
   try {
-    const { password, email } = req.body as RequestBody;
+    let { password, email, expiresInSeconds } =
+      req.body as RequestBody;
+
+    if (!expiresInSeconds || expiresInSeconds > 3600) {
+      expiresInSeconds = 3600;
+    }
 
     if (typeof email !== 'string' || typeof password !== 'string') {
       return res
@@ -149,10 +161,15 @@ async function handlerLogin(
         .json({ message: 'Incorrect email or password' });
     }
 
+    const JWT = makeJWT(user.id, expiresInSeconds, config.secretKey);
+
     return res.status(200).json({
       user: {
         id: user.id,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
         email: user.email,
+        token: JWT,
       },
     });
   } catch (err) {
@@ -215,6 +232,9 @@ async function handlerCreateChirp(
   try {
     const { body, userId }: { body: string; userId: string } =
       req.body;
+
+    const userToken = getBearerToken(req);
+    validateJWT(userToken, config.secretKey);
 
     // Validate input
     if (!userId || typeof body !== 'string' || body.length === 0) {

@@ -12,6 +12,7 @@ type DBConfig = {
     platform: string;
   };
   fileserverHits: number;
+  secretKey: string;
 };
 
 const migrationConfig: MigrationConfig = {
@@ -25,4 +26,5 @@ export const config: DBConfig = {
     platform: process.env.PLATFORM!,
   },
   fileserverHits: 0,
+  secretKey: envOrThrow('SECRET_KEY'),
 };
