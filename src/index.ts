@@ -1,14 +1,15 @@
 import { NextFunction, Request, Response } from 'express';
 import express from 'express';
 import { db } from './db/client.js';
-import { users, chirps } from './db/schema.js';
-import { sql } from 'drizzle-orm';
+import { users, chirps, refreshTokens } from './db/schema.js';
+import { isNull, sql, eq, asc, and, gt } from 'drizzle-orm';
 
 import {
   checkPasswordHash,
   getBearerToken,
   hashPassword,
   makeJWT,
+  makeRefreshToken,
   validateJWT,
 } from './auth.js';
 import postgres from 'postgres';
@@ -16,7 +17,9 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { config } from './db/migrationConfig.js';
 import { randomUUID } from 'node:crypto';
-import { eq, asc } from 'drizzle-orm';
+import { REFRESH_TOKEN_EXPIRY_MS } from './constants.js';
+import { ref } from 'node:process';
+import { envOrThrow } from './utils.js';
 
 // Database will be up-to-date whenever server starts
 const migrationClient = postgres(config.db.url, { max: 1 });
@@ -45,6 +48,10 @@ app.post('/admin/reset', handlerRequestReset);
 app.post('/api/users', handlerUsers);
 app.post('/api/chirps', handlerCreateChirp);
 app.post('/api/login', handlerLogin);
+app.post('/api/refresh', handlerRefresh);
+app.post('/api/revoke', handlerRevoke);
+
+app.put('/api/users', handlerUpdate);
 
 // Catch all unknown routes → turn into NotFoundError
 app.use((req, res, next) => {
@@ -119,6 +126,186 @@ function errorHandler(
   res.status(status).json({ error: message });
 }
 
+async function handlerUpdate(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    // 1. Validate authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res
+        .status(401)
+        .json({ message: 'Missing or invalid token' });
+    }
+
+    const accessToken = authHeader.split(' ')[1];
+
+    // 2. Verify and decode access token. This must return the authenticated user ID.
+    let authenticatedUserId;
+    try {
+      authenticatedUserId = validateJWT(
+        accessToken,
+        envOrThrow('SECRET_KEY')
+      );
+    } catch {
+      return res
+        .status(401)
+        .json({ message: 'Invalid or expired token' });
+    }
+
+    // 3. Validate request body
+    const { password, email } = req.body as RequestBody;
+
+    if (typeof email !== 'string') {
+      throw new BadRequestError('Invalid email');
+    }
+
+    if (typeof password !== 'string' || password.length < 8) {
+      throw new BadRequestError(
+        'Password must be at least 8 characters long'
+      );
+    }
+
+    // 4. Hash password
+    const hashedPassword = await hashPassword(password);
+
+    // 5. Update authenticated user's record
+    const [updatedUser] = await db
+      .update(users)
+      .set({ email, hashedPassword, updatedAt: new Date() })
+      .where(eq(users.id, authenticatedUserId))
+      .returning({
+        id: users.id,
+        email: users.email,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      });
+
+    // 6. Respond with the updated user (no password)
+    return res.status(200).json(updatedUser);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function handlerRevoke(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res
+        .status(401)
+        .json({ message: 'Missing or invalid token' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    // Look up the refresh token in DB
+
+    const [refreshTokenRow] = await db
+      .select()
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.token, token),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, new Date())
+        )
+      )
+      .limit(1);
+
+    if (!refreshTokenRow) {
+      return res
+        .status(401)
+        .json({ message: 'Invalid or expired token' });
+    }
+
+    // Revoke token: update revokedAt and updatedAt
+    await db
+      .update(refreshTokens)
+      .set({
+        revokedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(refreshTokens.token, token));
+
+    return res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function handlerRefresh(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res
+        .status(401)
+        .json({ message: 'Missing or invalid token' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    // Look up the refresh token in DB
+    const [refreshTokenRow] = await db
+      .select()
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.token, token),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, new Date())
+        )
+      )
+      .limit(1);
+
+    if (!refreshTokenRow) {
+      return res
+        .status(401)
+        .json({ message: 'Invalid or expired token' });
+    }
+
+    // Get the user from the token
+    const [user] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+        hashedPassword: users.hashedPassword,
+      })
+      .from(refreshTokens)
+      .leftJoin(users, eq(users.id, refreshTokens.userId))
+      .where(
+        and(
+          eq(refreshTokens.token, token),
+          isNull(refreshTokens.revokedAt),
+          gt(refreshTokens.expiresAt, new Date())
+        )
+      )
+      .limit(1);
+
+    if (!user || !user.id) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    const newToken = makeJWT(user.id, config.secretKey);
+
+    return res.status(200).json({ token: newToken });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function handlerLogin(
   req: Request,
   res: Response,
@@ -161,7 +348,21 @@ async function handlerLogin(
         .json({ message: 'Incorrect email or password' });
     }
 
-    const JWT = makeJWT(user.id, expiresInSeconds, config.secretKey);
+    const token = makeJWT(user.id, config.secretKey);
+    const refreshToken = makeRefreshToken();
+
+    // compute expiresAt for Refresh Token from expiresInSeconds (Date object)
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_MS);
+
+    // Add Refresh Token to DB
+    await db.insert(refreshTokens).values({
+      token: refreshToken,
+      userId: user.id,
+      expiresAt,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      revokedAt: null,
+    });
 
     return res.status(200).json({
       user: {
@@ -169,7 +370,8 @@ async function handlerLogin(
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
         email: user.email,
-        token: JWT,
+        token,
+        refreshToken,
       },
     });
   } catch (err) {

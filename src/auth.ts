@@ -2,6 +2,7 @@ import argon2 from 'argon2';
 import { JwtPayload } from 'jsonwebtoken';
 import jwt from 'jsonwebtoken';
 import { Request } from 'express';
+import { randomBytes } from 'crypto';
 
 export async function hashPassword(
   password: string
@@ -18,18 +19,14 @@ export async function checkPasswordHash(
 
 type Payload = Pick<JwtPayload, 'iss' | 'sub' | 'iat' | 'exp'>;
 
-export function makeJWT(
-  userID: string,
-  expiresIn: number,
-  secret: string
-): string {
-  const iat = Math.floor(Date.now() / 1000);
+export function makeJWT(userID: string, secret: string): string {
+  const iat = Math.floor(Date.now() / 1000);  // convert to seconds
 
   const payload: Payload = {
     iss: 'chirpy',
     sub: userID,
     iat,
-    exp: iat + expiresIn,
+    exp: iat + 3600, // 1 hour later
   };
 
   return jwt.sign(payload, secret);
@@ -72,4 +69,8 @@ export function getBearerToken(req: Request): string {
   }
 
   return token;
+}
+
+export function makeRefreshToken(): string {
+  return randomBytes(32).toString('hex');
 }
