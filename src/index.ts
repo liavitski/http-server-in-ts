@@ -53,6 +53,8 @@ app.post('/api/revoke', handlerRevoke);
 
 app.put('/api/users', handlerUpdate);
 
+app.delete('/api/chirps/:chirpID', handlerDelete);
+
 // Catch all unknown routes → turn into NotFoundError
 app.use((req, res, next) => {
   next(new NotFoundError('Route not found'));
@@ -124,6 +126,61 @@ function errorHandler(
   const message = err.message ?? 'Something went wrong';
 
   res.status(status).json({ error: message });
+}
+
+async function handlerDelete(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { chirpID } = req.params;
+
+    if (!chirpID) {
+      return res.status(401).json({ message: 'Missing chirp ID' });
+    }
+
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res
+        .status(401)
+        .json({ message: 'Missing or invalid token' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    let userId;
+
+    try {
+      userId = validateJWT(token, envOrThrow('SECRET_KEY'));
+    } catch {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+
+    // Load chirp
+    const [chirp] = await db
+      .select()
+      .from(chirps)
+      .where(eq(chirps.id, chirpID))
+      .limit(1);
+
+    if (!chirp) {
+      return res.status(404).json({ message: 'Chirp not found' });
+    }
+
+    // Check ownership
+    if (chirp.userId !== userId) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    // Delete chirp
+    await db.delete(chirps).where(eq(chirps.id, chirpID));
+
+    return res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function handlerUpdate(
@@ -412,15 +469,31 @@ async function handlerGetAllChirps(
   next: NextFunction
 ) {
   try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res
+        .status(401)
+        .json({ message: 'Missing or invalid token' });
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    let userId;
+
+    try {
+      userId = validateJWT(token, envOrThrow('SECRET_KEY'));
+    } catch {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+
     const userChirps = await db
       .select()
       .from(chirps)
-      .where(
-        eq(chirps.userId, 'a7beba88-5ae5-4658-8f40-cf94e47fdbec')
-      )
+      .where(eq(chirps.userId, userId))
       .orderBy(asc(chirps.createdAt));
 
-    return res.status(200).json({ userChirps });
+    return res.status(200).json(userChirps);
   } catch (err) {
     next(err);
   }
@@ -436,7 +509,7 @@ async function handlerCreateChirp(
       req.body;
 
     const userToken = getBearerToken(req);
-    validateJWT(userToken, config.secretKey);
+    validateJWT(userToken, envOrThrow('SECRET_KEY'));
 
     // Validate input
     if (!userId || typeof body !== 'string' || body.length === 0) {

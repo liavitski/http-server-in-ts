@@ -28,8 +28,7 @@ Authorization: Bearer aeedf47ec3673a17be8495c062aa4165829ab3e27c81fd0293b469ad94
 
 GET http://localhost:8080/api/chirps
 Content-Type: application/json
-
-{}
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHkiLCJzdWIiOiIwMWMyZTZhOC03ZjRmLTQzZTctOTU4Zi0wODhiYzBkZDUxM2EiLCJpYXQiOjE3NjQ5NjIwNjMsImV4cCI6MTc2NDk2NTY2M30.KkZHabFaNbD0Zectxi5J4ID3XauI3kp-J_FKvW3V71Q
 
 ### Create a user
 POST http://localhost:8080/api/users
@@ -54,11 +53,11 @@ Content-Type: application/json
 ###
 POST http://localhost:8080/api/chirps
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHkiLCJzdWIiOiJjZTViMGU1MC1mODZmLTRiMGUtYTdmOS00MDVhY2EyNGMxYTEiLCJpYXQiOjE3NjQ0OTgwNTYsImV4cCI6MTc2NDUwMTY1Nn0.PHj0n2VBig7Bf5eO5ayZdT381Rv1YJNDdq9ikLquXvk
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHkiLCJzdWIiOiIwMWMyZTZhOC03ZjRmLTQzZTctOTU4Zi0wODhiYzBkZDUxM2EiLCJpYXQiOjE3NjQ5NjExNzYsImV4cCI6MTc2NDk2NDc3Nn0.EP_MqilIjJTXbNJqG-93gPu6KP2W8Trgy2DxonAiLX8
 
 {
     "body": "Hello world!",
-    "userId": "ce5b0e50-f86f-4b0e-a7f9-405aca24c1a1"
+    "userId": "01c2e6a8-7f4f-43e7-958f-088bc0dd513a"
 }
 
 ###
@@ -69,3 +68,17 @@ POST http://localhost:8080/admin/reset
 
 
 
+### Delete chirp not authenticated
+DELETE http://localhost:8080/api/chirps/1234
+
+### Delete chirp with invalid token
+DELETE http://localhost:8080/api/chirps/1234
+Authorization: Bearer invalidtoken
+
+### Delete chirp when not author
+DELETE http://localhost:8080/api/chirps/{{chirpId}}
+Authorization: Bearer {{tokenOfAnotherUser}}
+
+### Delete chirp when author (should return 204)
+DELETE http://localhost:8080/api/chirps/a89cf178-9427-49d7-ae74-5da46c3c5493
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHkiLCJzdWIiOiIwMWMyZTZhOC03ZjRmLTQzZTctOTU4Zi0wODhiYzBkZDUxM2EiLCJpYXQiOjE3NjQ5NjIwNjMsImV4cCI6MTc2NDk2NTY2M30.KkZHabFaNbD0Zectxi5J4ID3XauI3kp-J_FKvW3V71Q
