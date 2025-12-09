@@ -546,21 +546,37 @@ async function handlerGetAllChirps(
 
     const token = authHeader.split(' ')[1];
 
-    let userId;
+    let authorId = '';
+    let authorIdQuery = req.query.authorId;
+    if (typeof authorIdQuery === 'string') {
+      authorId = authorIdQuery;
+    }
 
+    let userId;
     try {
       userId = validateJWT(token, envOrThrow('SECRET_KEY'));
     } catch {
       return res.status(401).json({ message: 'Invalid token' });
     }
 
-    const userChirps = await db
+    // Case 1: authorId provided - fetch chirps for that author
+    if (authorId) {
+      const chirpsByAuthor = await db
+        .select()
+        .from(chirps)
+        .where(eq(chirps.userId, authorId))
+        .orderBy(asc(chirps.createdAt));
+
+      return res.status(200).json(chirpsByAuthor);
+    }
+
+    // Case 2: authorId not provided - return all chirps
+    const allChirps = await db
       .select()
       .from(chirps)
-      .where(eq(chirps.userId, userId))
       .orderBy(asc(chirps.createdAt));
 
-    return res.status(200).json(userChirps);
+    return res.status(200).json(allChirps);
   } catch (err) {
     next(err);
   }

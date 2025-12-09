@@ -45,19 +45,20 @@ Content-Type: application/json
 
 {
     //"password": "87654321",
-    "password": "12121212",
+    "password": "12345678",
     //"email": "pashalevy@gmail.com"
-    "email": "new@mail.ru"
+    "email": "pawlik_by@mail.ru"
+    //"email": "new@mail.ru"
 }
 
-###
+### Create chirp
 POST http://localhost:8080/api/chirps
 Content-Type: application/json
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHkiLCJzdWIiOiIwMWMyZTZhOC03ZjRmLTQzZTctOTU4Zi0wODhiYzBkZDUxM2EiLCJpYXQiOjE3NjQ5NjExNzYsImV4cCI6MTc2NDk2NDc3Nn0.EP_MqilIjJTXbNJqG-93gPu6KP2W8Trgy2DxonAiLX8
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHkiLCJzdWIiOiI5MmNmMWJkZS0wOTI0LTQ4MjgtODQ1YS0wMGFhN2ZjMzI0YjciLCJpYXQiOjE3NjUzMDQ5NTAsImV4cCI6MTc2NTMwODU1MH0.Zit_T8jvSwhmXUd4zhFXqpKGPv9-UhntaG2qTiFt6sQ
 
 {
-    "body": "Hello world!",
-    "userId": "01c2e6a8-7f4f-43e7-958f-088bc0dd513a"
+    "body": "Hello world! =P",
+    "userId": "92cf1bde-0924-4828-845a-00aa7fc324b7"
 }
 
 ###
@@ -140,4 +141,9 @@ Authorization: ApiKey f271c81ff7084ee5b99a5091b42d486e
     "userId": "01c2e6a8-7f4f-43e7-958f-088bc0dd513a"
   }
 }
+
+### Testing GET for return chirps by author or all
+GET http://localhost:8080/api/chirps?authorId=92cf1bde-0924-4828-845a-00aa7fc324b7
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJjaGlycHkiLCJzdWIiOiI5MmNmMWJkZS0wOTI0LTQ4MjgtODQ1YS0wMGFhN2ZjMzI0YjciLCJpYXQiOjE3NjUzMDQ4MzYsImV4cCI6MTc2NTMwODQzNn0.xa9VXTy_R0rmvmOFdCxT1x70u2t9lJT8ru05Hv2aaQE
 
