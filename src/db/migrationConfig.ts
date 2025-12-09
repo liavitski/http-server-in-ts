@@ -13,6 +13,7 @@ type DBConfig = {
   };
   fileserverHits: number;
   secretKey: string;
+  polkaKey: string;
 };
 
 const migrationConfig: MigrationConfig = {
@@ -27,4 +28,5 @@ export const config: DBConfig = {
   },
   fileserverHits: 0,
   secretKey: envOrThrow('SECRET_KEY'),
+  polkaKey: envOrThrow('POLKA_KEY'),
 };

@@ -3,6 +3,7 @@ import express from 'express';
 import { db } from './db/client.js';
 import { users, chirps, refreshTokens } from './db/schema.js';
 import { isNull, sql, eq, asc, and, gt } from 'drizzle-orm';
+import { validate as isUUID } from 'uuid';
 
 import {
   checkPasswordHash,
@@ -18,7 +19,6 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { config } from './db/migrationConfig.js';
 import { randomUUID } from 'node:crypto';
 import { REFRESH_TOKEN_EXPIRY_MS } from './constants.js';
-import { ref } from 'node:process';
 import { envOrThrow } from './utils.js';
 
 // Database will be up-to-date whenever server starts
@@ -50,6 +50,7 @@ app.post('/api/chirps', handlerCreateChirp);
 app.post('/api/login', handlerLogin);
 app.post('/api/refresh', handlerRefresh);
 app.post('/api/revoke', handlerRevoke);
+app.post('/api/polka/webhooks', handlerWebHook);
 
 app.put('/api/users', handlerUpdate);
 
@@ -77,9 +78,6 @@ type RequestBody = {
   email: string;
   expiresInSeconds?: number;
 };
-
-const allUsers = await db.select().from(users);
-console.log(allUsers);
 
 class AppError extends Error {
   status: number;
@@ -126,6 +124,73 @@ function errorHandler(
   const message = err.message ?? 'Something went wrong';
 
   res.status(status).json({ error: message });
+}
+
+async function handlerWebHook(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    // 1. Verify API key
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('ApiKey ')) {
+      return res
+        .status(401)
+        .json({ message: 'Missing or invalid API key' });
+    }
+
+    const apiKey = authHeader.split(' ')[1];
+    const expectedApiKey = envOrThrow('POLKA_KEY');
+
+    if (apiKey !== expectedApiKey) {
+      return res.status(401).json({ message: 'Invalid API Key' });
+    }
+
+    // 2. Read payload
+    const { event, data } = req.body as {
+      event: string;
+      data: { userId: string };
+    };
+
+    if (!data || !data.userId) {
+      return res.status(400).json({ message: 'Invalid payload' });
+    }
+
+    // 3. Only handle `user.upgraded`
+    if (event !== 'user.upgraded') {
+      return res.sendStatus(204);
+    }
+
+    // 4. Validate UUID format BEFORE querying DB
+    if (!isUUID(data.userId)) {
+      return res
+        .status(400)
+        .json({ message: 'Invalid userId format' });
+    }
+
+    // 5. Update user using `.returning()` for row count
+    const result = await db
+      .update(users)
+      .set({
+        isChirpyRed: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, data.userId))
+      .returning({ id: users.id });
+
+    console.log('Result from update:', result);
+
+    // If no rows were updated → user not found
+    if (result.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // 6. Success
+    return res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
 }
 
 async function handlerDelete(
@@ -236,6 +301,7 @@ async function handlerUpdate(
       .returning({
         id: users.id,
         email: users.email,
+        isChirpyRed: users.isChirpyRed,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
       });
@@ -424,6 +490,7 @@ async function handlerLogin(
     return res.status(200).json({
       user: {
         id: user.id,
+        isChirpyRed: user.isChirpyRed,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
         email: user.email,
@@ -570,6 +637,7 @@ async function handlerUsers(
       .values({ email, hashedPassword: hashed })
       .returning({
         id: users.id,
+        isChirpyRed: users.isChirpyRed,
         email: users.email,
       });
 
