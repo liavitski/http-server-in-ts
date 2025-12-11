@@ -552,6 +552,12 @@ async function handlerGetAllChirps(
       authorId = authorIdQuery;
     }
 
+    let sort: 'asc' | 'desc' = 'asc';
+    let sortQuery = req.query.sort;
+    if (sortQuery === 'desc') {
+      sort = 'desc';
+    }
+
     let userId;
     try {
       userId = validateJWT(token, envOrThrow('SECRET_KEY'));
@@ -559,24 +565,24 @@ async function handlerGetAllChirps(
       return res.status(401).json({ message: 'Invalid token' });
     }
 
-    // Case 1: authorId provided - fetch chirps for that author
+    let chirpList;
+
     if (authorId) {
-      const chirpsByAuthor = await db
+      chirpList = await db
         .select()
         .from(chirps)
-        .where(eq(chirps.userId, authorId))
-        .orderBy(asc(chirps.createdAt));
-
-      return res.status(200).json(chirpsByAuthor);
+        .where(eq(chirps.userId, authorId));
+    } else {
+      chirpList = await db.select().from(chirps);
     }
 
-    // Case 2: authorId not provided - return all chirps
-    const allChirps = await db
-      .select()
-      .from(chirps)
-      .orderBy(asc(chirps.createdAt));
+    chirpList.sort((a, b) => {
+      const t1 = new Date(a.createdAt).getTime();
+      const t2 = new Date(b.createdAt).getTime();
+      return sort === 'asc' ? t1 - t2 : t2 - t1;
+    });
 
-    return res.status(200).json(allChirps);
+    return res.status(200).json(chirpList);
   } catch (err) {
     next(err);
   }
